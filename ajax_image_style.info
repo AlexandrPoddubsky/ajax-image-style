@@ -1,0 +1,3 @@
+name = AJAX Image Style
+description = Applique un style d'image et renvoie l'URL
+core = 7.x

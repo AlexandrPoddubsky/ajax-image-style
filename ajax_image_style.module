@@ -1,0 +1,177 @@
+<?php
+
+function ajax_image_style_preprocess_page(&$vars, $hook) {
+    drupal_add_js(drupal_get_path('module', 'ajax_image_style') . '/ajax_image_style.js');
+}
+
+function ajax_image_style_menu() {
+    return array(
+        'ajaxis/%/%' => array(
+            'page callback' => 'render_picture', // Render HTML
+            'page arguments' => array(1,2),
+            'type' => MENU_CALLBACK,
+            'access arguments' => array('access content'),
+        )
+    );
+}
+
+function render_picture($stylename, $url) {
+    $img = hex2bin($url);
+
+    $styles = image_styles();
+	$components = explode('-', $stylename);  // stylename-[contain|cover]-size(xheight)
+
+	$wh = explode("x", $components[2]);
+	$width = $wh[0];
+	if (isset($wh[1])) $height = $wh[1];
+	else $height = $width;
+	
+    if (!isset($styles[$stylename])) {
+    	$basestyle = $components[0];
+    	$log = "$stylename not found, trying base $basestyle";
+    	if (isset($styles[$basestyle])) {
+    		$new_style = image_style_save(array('name' => $stylename));
+    		$weight = 1;
+    		
+    		foreach ($styles[$basestyle]['effects'] as $e) {
+    			unset($e['ieid']);
+    			$e['isid'] = $new_style['isid'];
+    			$e['weight'] = $weight;
+	    		image_effect_save($e);
+	    		$weight = $weight+1;
+    		}
+
+    		$resefx = array(
+    			'data' => array(
+    				'width' => $width,
+    				'height' => $height,
+    			),
+    			'isid' => $new_style['isid'],
+    			'weight' => $weight,
+    		);
+    		
+    		/*
+    		// standard
+    		$resefx['name'] = 'image_scale';
+    		if ($components[1] == "cover") $resefx['name'] = 'image_scale_and_crop';
+    		*/
+    		
+    		// imagefield_focus + smartcrop
+    		$resefx['name'] = 'imagefield_focus_scale';
+    		if ($components[1] == "cover") $resefx['name'] = 'imagefield_focus_scale_and_crop';
+    		$resefx['data']['strength'] = 'medium';
+    		$resefx['data']['fallback'] = 'smartcrop';
+
+    		image_effect_save($resefx);
+    		
+    		image_effect_save(array(
+    			'name' => 'image_style_quality',
+    			'data' => array(
+    				'quality' => 100-min($width, $height)*25/2000,
+    			),
+    			'isid' => $new_style['isid'],
+    			'weight' => $weight+1,
+    		));
+    		$log = "$log\n$stylename created";
+    	} else $log = "$log\n$basestyle DOES NOT EXIST!!!";
+    } else $log = "$stylename found";
+    
+    $isu = image_style_url($stylename, $img);
+
+    $res = array(
+    	'url' => $isu,
+    	'result' => $log,
+    );
+    
+    drupal_json_output($res);
+}
+
+
+
+/*
+function render_picture($st, $url) {
+    $u = hex2bin($url);
+    $img = image_load($u);
+    if ($img === FALSE) $log = "ERROR";
+    else {
+	    $enlarge = false;
+		$stylename = $st;
+	    
+	    $styles = image_styles();
+		$components = explode('-', $st);  // stylename-[contain|cover]-size(xheight)
+
+		$wh = explode("x", $components[2]);
+		$width = $wh[0];
+		if (isset($wh[1])) $height = $wh[1];
+		else $height = $width;
+		
+		if (($width > $img['width'])||($height > $img['height'])) {
+			$enlarge = true;
+			$stylename = "$stylename-upscaled";
+		}
+
+	    if (!isset($styles[$stylename])) {
+	    	$basestyle = $components[0];
+	    	$log = "$stylename not found, trying base $basestyle\n";
+	    	if (isset($styles[$basestyle])) {
+	    		$new_style = image_style_save(array('name' => $stylename));
+	    		$weight = 1;
+	    		
+	    		if ($enlarge) {
+	    			
+	    		}
+	    		
+	    		foreach ($styles[$basestyle]['effects'] as $e) {
+	    			unset($e['ieid']);
+	    			$e['isid'] = $new_style['isid'];
+	    			$e['weight'] = $weight;
+		    		image_effect_save($e);
+		    		$weight = $weight+1;
+	    		}
+
+	    		$resefx = array(
+	    			'data' => array(
+	    				'width' => $width,
+	    				'height' => $height,
+	    			),
+	    			'isid' => $new_style['isid'],
+	    			'weight' => $weight,
+	    		);
+	    		
+	    		
+	    		// standard
+//	    		$resefx['name'] = 'image_scale';
+//	    		if ($components[1] == "cover") $resefx['name'] = 'image_scale_and_crop';
+
+	    		// imagefield_focus + smartcrop
+	    		$resefx['name'] = 'imagefield_focus_scale';
+	    		if ($components[1] == "cover") $resefx['name'] = 'imagefield_focus_scale_and_crop';
+	    		$resefx['data']['strength'] = 'medium';
+	    		$resefx['data']['fallback'] = 'smartcrop';
+	
+	    		image_effect_save($resefx);
+	    		
+	    		image_effect_save(array(
+	    			'name' => 'image_style_quality',
+	    			'data' => array(
+	    				'quality' => 100-min($width, $height)*25/2000,
+	    			),
+	    			'isid' => $new_style['isid'],
+	    			'weight' => $weight+1,
+	    		));
+	    		
+	//    		$log = "$log $sst exists\n".print_r($styles[$basestyle]['effects'], TRUE);
+	    	} else $log = "$log $sst DOES NOT EXIST!!!";
+	    }
+	    
+	    $isu = image_style_url($stylename, $u);
+    }
+    
+    $res = array(
+    	'url' => $isu,
+    	'result' => $log,
+    );
+    
+    drupal_json_output($res);
+}
+*/
